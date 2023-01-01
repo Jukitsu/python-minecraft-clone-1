@@ -1,6 +1,7 @@
 from util import *
 import glm
 from functools import lru_cache as cache
+from itertools import chain
 
 SUBCHUNK_WIDTH  = 4
 SUBCHUNK_HEIGHT = 4
@@ -164,39 +165,35 @@ class Subchunk:
 
 	def get_skylight(self, block, face, pos, npos):
 		return self.get_skylight_smooth(block, face, pos, npos) if self.world.options.SMOOTH_LIGHTING else self.get_raw_skylight(pos, npos)
-
-
-	def add_face(self, face, pos, lpos, block, block_type, npos=None):
-		lx, ly, lz = lpos
-		vertex_positions = block_type.vertex_positions[face]
-		tex_index = block_type.tex_indices[face]
-		shading = self.get_shading(block, block_type, face, npos)
-		lights = self.get_light(block, face, pos, npos)
-		skylights = self.get_skylight(block, face, pos, npos)
-
-		if block_type.model.translucent:
-			mesh = self.translucent_mesh
-		else:
-			mesh = self.mesh
-		
-		for i in range(4):
-			mesh += [vertex_positions[i * 3 + 0] + lx, 
-					 vertex_positions[i * 3 + 1] + ly, 
-					 vertex_positions[i * 3 + 2] + lz,
-					 tex_index * 4 + i,
-					 shading[i],
-					 lights[i],
-					 skylights[i]]
-					 
-
-	def can_render_face(self, block_type, block_number, position):
-		return not (self.world.is_opaque_block(position)
-			or (block_type.glass and self.world.get_block_number(position) == block_number))
 			
 
 	def update_mesh(self):
 		self.mesh = []
 		self.translucent_mesh = []
+
+		def can_render_face(block_type, block_number, position):
+			return not (self.world.is_opaque_block(position)
+				or (block_type.glass and self.world.get_block_number(position) == block_number))
+
+		def add_face(face, pos, lpos, block, block_type, npos=None):
+			lx, ly, lz = lpos
+			vertex_positions = block_type.vertex_positions[face]
+			tex_index = block_type.tex_indices[face]
+			shading = self.get_shading(block, block_type, face, npos)
+			lights = self.get_light(block, face, pos, npos)
+			skylights = self.get_skylight(block, face, pos, npos)
+
+			return chain.from_iterable(
+				[
+					vertex_positions[i * 3 + 0] + lx, 
+					vertex_positions[i * 3 + 1] + ly, 
+					vertex_positions[i * 3 + 2] + lz,
+					tex_index * 4 + i,
+					shading[i],
+					lights[i],
+					skylights[i]
+				] for i in range(4)
+			)
 
 		for local_x in range(SUBCHUNK_WIDTH):
 			for local_y in range(SUBCHUNK_HEIGHT):
@@ -212,23 +209,42 @@ class Subchunk:
 					if block_number:
 						block_type = self.world.block_types[block_number]
 
-						x, y, z = pos = glm.ivec3(
+						pos = glm.ivec3(
 							self.position[0] + local_x,
 							self.position[1] + local_y,
 							self.position[2] + local_z)
-						
+						mesh = self.translucent_mesh if block_type.translucent else self.mesh
 
 						# if block is cube, we want it to check neighbouring blocks so that we don't uselessly render faces
 						# if block isn't a cube, we just want to render all faces, regardless of neighbouring blocks
 						# since the vast majority of blocks are probably anyway going to be cubes, this won't impact performance all that much; the amount of useless faces drawn is going to be minimal
 
 						if block_type.is_cube:
-							for face, direction in enumerate(DIRECTIONS):
-								npos = pos + direction
-								if self.can_render_face(block_type, block_number, npos):
-									self.add_face(face, pos, parent_lpos, block_number, block_type, npos)
+							mesh.extend(
+								chain.from_iterable(
+									add_face(
+										face, 
+										pos, 
+										parent_lpos, 
+										block_number,
+										block_type, 
+										pos + direction
+									) for face, direction in enumerate(DIRECTIONS) 
+									if can_render_face(block_type, block_number, pos + direction)
+								)
+							)
 														
 						else:
-							for i in range(len(block_type.vertex_positions)):
-								self.add_face(i, pos, parent_lpos, block_number, block_type)
+							mesh.extend(
+								chain.from_iterable(
+									add_face(
+										i, 
+										pos, 
+										parent_lpos, 
+										block_number, 
+										block_type
+									) for i in range(len(block_type.vertex_positions))
+								)
+							)
+							
 
