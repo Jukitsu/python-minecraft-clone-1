@@ -7,6 +7,8 @@ import subchunk
 
 import options
 
+from itertools import chain
+
 CHUNK_WIDTH = 16
 CHUNK_HEIGHT = 128
 CHUNK_LENGTH = 16
@@ -41,8 +43,10 @@ class Chunk:
 
 		# mesh variables
 
-		self.mesh = []
-		self.translucent_mesh = []
+		self.mesh = chain()
+		self.translucent_mesh = chain()
+		self.mesh_len = 0
+		self.translucent_mesh_len = 0
 
 		self.mesh_quad_count = 0
 		self.translucent_quad_count = 0
@@ -193,20 +197,24 @@ class Chunk:
 	def update_mesh(self):
 		# combine all the small subchunk meshes into one big chunk mesh
 
-		for subchunk in self.subchunks.values():
-			self.mesh += subchunk.mesh
-			self.translucent_mesh += subchunk.translucent_mesh
+		self.mesh = chain.from_iterable(subchunk.mesh for subchunk in self.subchunks.values())
+		self.translucent_mesh = chain.from_iterable(subchunk.translucent_mesh for subchunk in self.subchunks.values())
+
+		self.mesh_len = sum(len(subchunk.mesh) for subchunk in self.subchunks.values())
+		self.translucent_mesh_len = sum(len(subchunk.translucent_mesh) for subchunk in self.subchunks.values())
 
 		# send the full mesh data to the GPU and free the memory used client-side (we don't need it anymore)
 		# don't forget to save the length of 'self.mesh_indices' before freeing
 
-		self.mesh_quad_count = len(self.mesh) // 28 # 28 = 7 (attributes of a vertex) * 4 (number of vertices per quad)
-		self.translucent_quad_count = len(self.translucent_mesh) // 28
+		self.mesh_quad_count = self.mesh_len // 28 # 28 = 7 (attributes of a vertex) * 4 (number of vertices per quad)
+		self.translucent_quad_count = self.translucent_mesh_len // 28
 
 		self.send_mesh_data_to_gpu()
 
-		self.mesh = []
-		self.translucent_mesh = []
+		self.mesh = chain()
+		self.translucent_mesh = chain()
+		self.mesh_len = 0
+		self.translucent_mesh_len = 0
 
 	def send_mesh_data_to_gpu(self): # pass mesh data to gpu
 		if not self.mesh_quad_count:
@@ -223,14 +231,14 @@ class Chunk:
 		gl.glBufferSubData(
 			gl.GL_ARRAY_BUFFER,
 			0,
-			ctypes.sizeof(gl.GLfloat * len(self.mesh)),
-			(gl.GLfloat * len(self.mesh)) (*self.mesh)
+			ctypes.sizeof(gl.GLfloat * self.mesh_len),
+			(gl.GLfloat * self.mesh_len) (*self.mesh)
 		)
 		gl.glBufferSubData(
 			gl.GL_ARRAY_BUFFER,
-			ctypes.sizeof(gl.GLfloat * len(self.mesh)),
-			ctypes.sizeof(gl.GLfloat * len(self.translucent_mesh)),
-			(gl.GLfloat * len(self.translucent_mesh)) (*self.translucent_mesh)
+			ctypes.sizeof(gl.GLfloat * self.mesh_len),
+			ctypes.sizeof(gl.GLfloat * self.translucent_mesh_len),
+			(gl.GLfloat * self.translucent_mesh_len) (*self.translucent_mesh)
 		)
 
 		if not self.world.options.INDIRECT_RENDERING:
