@@ -1,7 +1,11 @@
 import ctypes
+import math
+
 import pyglet
 
 import pyglet.gl as gl
+
+import matrix
 
 import models.pig # default model
 
@@ -39,37 +43,14 @@ class Entity_type:
 
 		gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
 
-		# convert model to arrays we can send to the GPU
+		# get total size of the models so we can create vertex buffers
 
-		self.vertices = sum(model.vertex_positions, [])
-		self.tex_coords = sum(model.tex_coords, [])
+		vertex_count = 0
+		tex_coord_count = 0
 
-		del self.tex_coords[2::3]
-
-		# get normal vector for each face
-
-		self.normals = []
-
-		for face in model.vertex_positions:
-			# take the cross product between two vectors we know are on the plane the face belongs to
-
-			u = [face[0] - face[3], face[1] - face[4], face[2] - face[5]]
-			v = [face[0] - face[6], face[1] - face[7], face[2] - face[8]]
-
-			n = [
-				 u[1] * v[2] - u[2] * v[1],
-				-u[0] * v[2] + u[2] * v[0],
-				 u[0] * v[1] - u[1] * v[0],
-			]
-
-			self.normals.extend(n * 4)
-
-		# compute indices
-
-		self.indices = []
-
-		for i in range(len(model.vertex_positions)):
-			self.indices.extend(x + i * 4 for x in (0, 1, 2, 0, 2, 3))
+		for bone in model.bones:
+			vertex_count += len(sum(bone["vertices"], [])) // 3
+			tex_coord_count += len(sum(bone["tex_coords"], [])) // 2
 
 		# create VAO/VBO/IBO
 
@@ -77,55 +58,60 @@ class Entity_type:
 		gl.glGenVertexArrays(1, self.vao)
 		gl.glBindVertexArray(self.vao)
 
-		# vertex positions
+		# vertex positions & normals
+		# we'll combine these two (6 floats per vertex, first 3 for position, next 3 for normal)
 
 		self.vertices_vbo = gl.GLuint(0)
 		gl.glGenBuffers(1, self.vertices_vbo)
 
 		gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertices_vbo)
-		gl.glBufferData(
-			gl.GL_ARRAY_BUFFER,
-			ctypes.sizeof(gl.GLfloat * len(self.vertices)),
-			(gl.GLfloat * len(self.vertices)) (*self.vertices),
-			gl.GL_STATIC_DRAW)
+		gl.glBufferData(gl.GL_ARRAY_BUFFER,
+			ctypes.sizeof(gl.GLfloat * vertex_count * 6),
+			0, gl.GL_STREAM_DRAW)
 
-		gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, 0)
+		size = ctypes.sizeof(gl.GLfloat * 3)
+
+		gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, size * 2, size * 0)
 		gl.glEnableVertexAttribArray(0)
 
+		gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, size * 2, size * 1)
+		gl.glEnableVertexAttribArray(1)
+
 		# texture coordinates
+		# these can be filled in straight away as they won't change
 
 		self.tex_coords_vbo = gl.GLuint(0)
 		gl.glGenBuffers(1, self.tex_coords_vbo)
 
 		gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.tex_coords_vbo)
-		gl.glBufferData(
-			gl.GL_ARRAY_BUFFER,
-			ctypes.sizeof(gl.GLfloat * len(self.tex_coords)),
-			(gl.GLfloat * len(self.tex_coords)) (*self.tex_coords),
-			gl.GL_STATIC_DRAW)
+		gl.glBufferData(gl.GL_ARRAY_BUFFER, ctypes.sizeof(gl.GLfloat * tex_coord_count * 2), 0, gl.GL_STATIC_DRAW)
 
-		# texture coordinates are still 3D here even though we don't use texture arrays (as is the case with blocks)
-		# this is so that we can interchange block & entity models
+		offset = 0
 
-		gl.glVertexAttribPointer(1, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, 0)
-		gl.glEnableVertexAttribArray(1)
+		for bone in self.model.bones:
+			tex_coords = sum(bone["tex_coords"], [])
 
-		# normals
+			type_ = gl.GLfloat * len(tex_coords)
+			size = ctypes.sizeof(type_)
 
-		self.normals_vbo = gl.GLuint(0)
-		gl.glGenBuffers(1, self.normals_vbo)
+			gl.glBufferSubData(
+				gl.GL_ARRAY_BUFFER, offset,
+				size, (type_) (*tex_coords))
 
-		gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.normals_vbo)
-		gl.glBufferData(
-			gl.GL_ARRAY_BUFFER,
-			ctypes.sizeof(gl.GLfloat * len(self.normals)),
-			(gl.GLfloat * len(self.normals)) (*self.normals),
-			gl.GL_STATIC_DRAW)
+			offset += size
 
-		gl.glVertexAttribPointer(2, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, 0)
+		gl.glVertexAttribPointer(2, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, 0)
 		gl.glEnableVertexAttribArray(2)
 
+		# compute indices
+
+		self.indices = []
+
+		for i in range(vertex_count):
+			self.indices.extend(x + i * 4 for x in (0, 1, 2, 0, 2, 3))
+
 		# indices
+		# these can be filled in straight away as they won't change
 
 		self.ibo = gl.GLuint(0)
 		gl.glGenBuffers(1, self.ibo)
@@ -136,6 +122,94 @@ class Entity_type:
 			ctypes.sizeof(gl.GLuint * len(self.indices)),
 			(gl.GLuint * len(self.indices)) (*self.indices),
 			gl.GL_STATIC_DRAW)
+
+	def animate(self, age, speed):
+		gl.glBindVertexArray(self.vao)
+
+		# compute & upload vertex positions
+
+		gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertices_vbo)
+		offset = 0
+
+		for bone in self.model.bones:
+			name = bone["name"]
+			pivot = bone["pivot"]
+			vertices = sum(bone["vertices"], [])
+			buffer = vertices * 2 # we want our buffer to hold both vertex positions & normals
+
+			# compute animation transformation matrix
+
+			anim = matrix.Matrix()
+			anim.load_identity()
+
+			anim.translate(*pivot)
+
+			kind = None
+
+			if name == "head":
+				kind = "head"
+
+			elif name[:3] == "leg":
+				kind = "odd_" * (int(name[3:]) in (1, 2)) + "leg"
+
+			elif name == "rightLeg":
+				kind = "leg"
+
+			elif name == "leftLeg":
+				kind = "odd_leg"
+
+			elif name == "rightArm":
+				kind = "arm"
+
+			elif name == "leftArm":
+				kind = "odd_arm"
+
+			if kind is not None:
+				odd = "odd" in kind
+
+				if kind == "head":
+					anim.rotate_2d(math.sin(age) / 2, math.cos(age) / 2)
+
+				if "leg" in kind:
+					phase = math.tau / 2 * odd
+					anim.rotate_2d(0, math.sin(age * 10 + phase) * 15 * speed)
+
+				if "arm" in kind:
+					theta = (-age if odd else age) * 2
+					phase = math.tau / 2 * odd
+					anim.rotate_2d(math.sin(theta + phase) / 8, math.cos(theta + phase) / 8 - math.tau / 4)
+
+			anim.translate(*[-x for x in pivot])
+
+			for i in range(0, len(vertices), 3):
+				vector = vertices[i: i + 3] + [1]
+				buffer[i * 2: i * 2 + 3] = matrix.multiply_matrix_vector(anim, vector)[:3]
+
+			# compute normals
+
+			for i in range(0, len(buffer), 24):
+				# take the cross product between two vectors we know are on the plane the face belongs to
+
+				n = matrix.cross_product(
+					[buffer[i + 0] - buffer[i + 6], buffer[i + 1] - buffer[i + 7], buffer[i + 2] - buffer[i + 8]],
+					[buffer[i + 0] - buffer[i + 12], buffer[i + 1] - buffer[i + 13], buffer[i + 2] - buffer[i + 14]]
+				)
+
+				# each vertex of a face will have the same normal, so we can simply copy it 4 times
+
+				for j in range(4):
+					buffer[i + j * 6 + 3: i + j * 6 + 6] = n
+
+			# upload vertex buffer section
+
+			type_ = gl.GLfloat * len(buffer)
+			size = ctypes.sizeof(type_)
+
+			gl.glBufferSubData(
+				gl.GL_ARRAY_BUFFER, offset,
+				size, (type_) (*buffer))
+
+			offset += size
 
 	def draw(self):
 		# bind textures

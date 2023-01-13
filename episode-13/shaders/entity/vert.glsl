@@ -1,11 +1,11 @@
 #version 330
 
 layout(location = 0) in vec3 vertex_position;
-layout(location = 1) in vec3 tex_coords;
-layout(location = 2) in vec3 normal;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 tex_coords;
 
 out vec3 local_position;
-out vec3 interpolated_tex_coords;
+out vec2 interpolated_tex_coords;
 out float shading;
 
 uniform mat4 transform_matrix;
