@@ -27,6 +27,25 @@ def multiply_matrices(x_matrix, y_matrix):
 
 	return result_matrix
 
+def multiply_matrix_vector(matrix, vector):
+	result = [0] * 4
+
+	for i, row in enumerate(zip(*matrix.data)): # transpose into row-major
+		result[i] = \
+			row[0] * vector[0] + \
+			row[1] * vector[1] + \
+			row[2] * vector[2] + \
+			row[3] * vector[3]
+
+	return result
+
+def cross_product(u, v):
+	return [
+		 u[1] * v[2] - u[2] * v[1],
+		-u[0] * v[2] + u[2] * v[0],
+		 u[0] * v[1] - u[1] * v[0],
+	]
+
 class Matrix:
 	def __init__(self, base = None):
 		if type(base) == Matrix: self.data = copy_matrix(base.data)
