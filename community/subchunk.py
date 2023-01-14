@@ -43,11 +43,11 @@ class Subchunk:
 
 		# mesh variables
 
-		self.mesh = []
-		self.mesh_array = None
+		self.mesh = ()
+		self.mesh_array = ()
 	
 		self.translucent_mesh = []
-		self.translucent_mesh_array = None
+		self.translucent_mesh_array = []
 
 	def get_raw_light(self, pos, npos):
 		if not npos:
@@ -168,8 +168,8 @@ class Subchunk:
 			
 
 	def update_mesh(self):
-		self.mesh = []
-		self.translucent_mesh = []
+		self.mesh_array = []
+		self.translucent_mesh_array = []
 
 		def can_render_face(block_type, block_number, position):
 			return not (self.world.is_opaque_block(position)
@@ -213,15 +213,15 @@ class Subchunk:
 							self.position[0] + local_x,
 							self.position[1] + local_y,
 							self.position[2] + local_z)
-						mesh = self.translucent_mesh if block_type.translucent else self.mesh
+						mesh_array = self.translucent_mesh_array if block_type.translucent else self.mesh_array
 
 						# if block is cube, we want it to check neighbouring blocks so that we don't uselessly render faces
 						# if block isn't a cube, we just want to render all faces, regardless of neighbouring blocks
 						# since the vast majority of blocks are probably anyway going to be cubes, this won't impact performance all that much; the amount of useless faces drawn is going to be minimal
 
 						if block_type.is_cube:
-							mesh.extend(
-								chain.from_iterable(
+							mesh_array.append(
+								tuple(chain.from_iterable(
 									add_face(
 										face, 
 										pos, 
@@ -231,12 +231,12 @@ class Subchunk:
 										pos + direction
 									) for face, direction in enumerate(DIRECTIONS) 
 									if can_render_face(block_type, block_number, pos + direction)
-								)
+								))
 							)
 														
 						else:
-							mesh.extend(
-								chain.from_iterable(
+							mesh_array.append(
+								tuple(chain.from_iterable(
 									add_face(
 										i, 
 										pos, 
@@ -244,7 +244,10 @@ class Subchunk:
 										block_number, 
 										block_type
 									) for i in range(len(block_type.vertex_positions))
-								)
+								))
 							)
+		
+		self.mesh = tuple(chain.from_iterable(self.mesh_array))
+		self.translucent_mesh = tuple(chain.from_iterable(self.translucent_mesh_array))
 							
 
