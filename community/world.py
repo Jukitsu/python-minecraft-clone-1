@@ -560,9 +560,18 @@ class World:
 			self.incrementer = -1
 
 	def can_render_chunk(self, chunk_position):
-		return self.player.check_chunk_in_frustum(chunk_position) and math.dist(self.get_chunk_position(self.player.position), chunk_position) <= self.options.RENDER_DISTANCE
+		result = self.player.check_in_frustum(self.chunks[chunk_position].collider)
+		
+		# Octree Rebuild (Future)
+		# if result == 1: # Intersects
+		#	self.chunks[chunk_position].update_multidraw_commands()
+		
+		return result and math.dist(self.get_chunk_position(self.player.position), chunk_position) <= self.options.RENDER_DISTANCE
 
 	def prepare_rendering(self):
+		if not self.player.moved:
+			return # No need redrawing the octree if the player hasn't moved.
+		
 		self.visible_chunks = [self.chunks[chunk_position]
 				for chunk_position in self.chunks if self.can_render_chunk(chunk_position)]
 		self.sort_chunks()
@@ -607,7 +616,7 @@ class World:
 		# Debug variables
 
 		self.visible_entities = 0
-                
+		
 		# daylight stuff
 
 		daylight_multiplier = self.daylight / 1800

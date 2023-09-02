@@ -31,7 +31,6 @@ class InternalConfig:
 		self.RENDER_DISTANCE = options.RENDER_DISTANCE
 		self.FOV = options.FOV
 		self.INDIRECT_RENDERING = options.INDIRECT_RENDERING
-		self.ADVANCED_OPENGL = options.ADVANCED_OPENGL
 		self.CHUNK_UPDATES = options.CHUNK_UPDATES
 		self.VSYNC = options.VSYNC
 		self.MAX_CPU_AHEAD_FRAMES = options.MAX_CPU_AHEAD_FRAMES
@@ -49,16 +48,16 @@ class Window(pyglet.window.Window):
 		# Options
 		self.options = InternalConfig(options)
 
-		if self.options.INDIRECT_RENDERING and not gl.gl_info.have_version(4, 2):
+		if self.options.INDIRECT_RENDERING and not gl.gl_info.have_version(4, 3):
 			raise RuntimeError("""Indirect Rendering is not supported on your hardware
-			This feature is only supported on OpenGL 4.2+, but your driver doesnt seem to support it,
+			This feature is only supported on OpenGL 4.3+, but your driver doesnt seem to support it,
 			Please disable "INDIRECT_RENDERING" in options.py""")
 
 		# F3 Debug Screen
 
 		self.show_f3 = False
 		self.f3 = pyglet.text.Label("", x = 10, y = self.height - 10,
-				font_size = 16,
+				font_size = 10,
 				color = (255, 255, 255, 255),
 				width = self.width // 3,
 				multiline = True
@@ -157,7 +156,7 @@ Display: {gl.gl_info.get_renderer()}
 		visible_quad_count = sum(chunk.mesh_quad_count for chunk in self.world.visible_chunks)
 		self.f3.text = \
 f"""
-{round(pyglet.clock.get_fps())} FPS ({self.world.chunk_update_counter} Chunk Updates) {"inf" if not self.options.VSYNC else "vsync"}{"ao" if self.options.SMOOTH_LIGHTING else ""}
+{round(1 / delta_time)} FPS ({self.world.chunk_update_counter} Chunk Updates) {"inf" if not self.options.VSYNC else "vsync"}{"ao" if self.options.SMOOTH_LIGHTING else ""}
 C: {visible_chunk_count} / {chunk_count} pC: {self.world.pending_chunk_update_count} pU: {len(self.world.chunk_building_queue)} aB: {chunk_count}
 E: {self.world.visible_entities} / {len(self.world.entities)}
 Client Singleplayer @{round(delta_time * 1000)} ms tick {round(1 / delta_time)} TPS
@@ -169,7 +168,7 @@ Light: {max(self.world.get_light(self.player.rounded_position), self.world.get_s
 
 {self.system_info}
 
-Renderer: {"OpenGL 3.3 VAOs" if not self.options.INDIRECT_RENDERING else "OpenGL 4.0 VAOs Indirect"} {"Conditional" if self.options.ADVANCED_OPENGL else ""}
+Renderer: {"OpenGL 3.3 Multidraw" if not self.options.INDIRECT_RENDERING else "OpenGL 4.3 Multidraw Indirect"} 
 Buffers: {chunk_count}
 Chunk Vertex Data: {round(quad_count * 28 * ctypes.sizeof(gl.GLfloat) / 1048576, 3)} MiB ({quad_count} Quads)
 Chunk Visible Quads: {visible_quad_count}
@@ -203,6 +202,8 @@ Buffer Uploading: Direct (glBufferSubData)
 		for entity in self.world.entities:
 			entity.update(delta_time)
 
+		self.player.moved = False # To do: move it elsewhere.
+
 	def on_draw(self):
 		gl.glEnable(gl.GL_DEPTH_TEST)
 		self.player.update_matrices()
@@ -218,34 +219,13 @@ Buffer Uploading: Direct (glBufferSubData)
 
 		# Draw the F3 Debug screen
 		if self.show_f3:
-			self.draw_f3()
+			self.f3.draw()
 
 		# CPU - GPU Sync
 		if not self.options.SMOOTH_FPS:
 			self.fences.append(gl.glFenceSync(gl.GL_SYNC_GPU_COMMANDS_COMPLETE, 0))
 		else:
 			gl.glFinish()
-
-	def draw_f3(self):
-		"""Draws the f3 debug screen. Current uses the fixed-function pipeline since pyglet labels uses it"""
-		gl.glDisable(gl.GL_DEPTH_TEST)
-		gl.glUseProgram(0)
-		gl.glBindVertexArray(0)
-		gl.glMatrixMode(gl.GL_MODELVIEW)
-		gl.glPushMatrix()
-		gl.glLoadIdentity()
-
-		gl.glMatrixMode(gl.GL_PROJECTION)
-		gl.glPushMatrix()
-		gl.glLoadIdentity()
-		gl.glOrtho(0, self.width, 0, self.height, -1, 1)
-
-		self.f3.draw()
-
-		gl.glPopMatrix()
-
-		gl.glMatrixMode(gl.GL_MODELVIEW)
-		gl.glPopMatrix()
 
 	# input functions
 
@@ -255,8 +235,9 @@ Buffer Uploading: Direct (glBufferSubData)
 
 		self.player.view_width = width
 		self.player.view_height = height
-		self.f3.y = self.height - 10
-		self.f3.width = self.width // 3
+		
+		# self.f3.y = self.height - 10
+		# self.f3.width = self.width // 3
 
 class Game:
 	def __init__(self):
@@ -266,7 +247,7 @@ class Game:
 		self.window = Window(config = self.config, width = 852, height = 480, caption = "Minecraft clone", resizable = True, vsync = options.VSYNC)
 
 	def run(self):
-		pyglet.app.run()
+		pyglet.app.run(interval = 0)
 
 
 

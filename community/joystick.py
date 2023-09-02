@@ -44,10 +44,8 @@ class Joystick_controller(controller.Controller):
 		if not self.game.mouse_captured or not self.joysticks:
 			return
 
-		self.game.player.rotation[0] += self.joystick_look[0] * self.camera_sensitivity
-		self.game.player.rotation[1] += -self.joystick_look[1] * self.camera_sensitivity
+		self.game.player.add_rotation(self.joystick_look[0] * self.camera_sensitivity, -self.joystick_look[1] * self.camera_sensitivity)
 
-		self.game.player.rotation[1] = max(-math.tau / 4, min(math.tau / 4, self.game.player.rotation[1]))
 
 		if round(max(self.joystick_interact)) > 0 and (self.last_update + self.update_delay) <= time.process_time():
 			if round(self.joystick_interact[0]) > 0: self.interact(self.InteractMode.BREAK)

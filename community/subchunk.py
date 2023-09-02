@@ -2,6 +2,8 @@ from util import *
 import glm
 from functools import lru_cache as cache
 from itertools import chain
+import collider
+import glm
 
 SUBCHUNK_WIDTH  = 4
 SUBCHUNK_HEIGHT = 4
@@ -41,6 +43,11 @@ class Subchunk:
 			self.parent.position[1] + self.local_position[1],
 			self.parent.position[2] + self.local_position[2])
 
+		self.collider = collider.Collider(
+			self.position, 
+			glm.ivec3(*self.position) + glm.ivec3(SUBCHUNK_WIDTH, SUBCHUNK_HEIGHT, SUBCHUNK_LENGTH)
+		)
+
 		# mesh variables
 
 		self.mesh = ()
@@ -62,6 +69,8 @@ class Subchunk:
 		else:
 			light_levels = self.world.get_skylight(npos)
 		return [light_levels] * 4
+
+	# Smooth Lighting shenaningans. It's a miracle I even got it working.
 
 	def get_face_ao(self, s1, s2, s3,
 						  s4,     s5,

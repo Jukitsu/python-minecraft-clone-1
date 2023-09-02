@@ -10,14 +10,10 @@ FOV = 90
 # --------------------------------- Performance --------------------------------- 
 
 # Indirect Rendering
-INDIRECT_RENDERING = False # Requires OpenGL 4.2+. Disable if having issues.
+INDIRECT_RENDERING = True # Requires OpenGL 4.3+. Disable if having issues.
                            # Indirect rendering caches the draw command parameters in a seperate indirect command buffer,
                            # thus reducing the amount of data needed to supply the draw call
 
-# Conditional Rendering with Occlusion queries
-ADVANCED_OPENGL = False # Not recommended unless using NVIDIA cards. 
-                        # Might cause more slowdowns that speedups.
-                        # Do not expect any concrete framerate improvement.
 # Max number of chunk updates per chunk every tick
 CHUNK_UPDATES = 4
 
@@ -48,7 +44,7 @@ SMOOTH_LIGHTING = True # Smooth Lighting smoothes the light of each vertex to ac
 FANCY_TRANSLUCENCY = True
 
 # Minification Filter
-MIPMAP_TYPE = gl.GL_NEAREST # Linear filtering samples the texture in a bilinear way in the distance, 
+MIPMAP_TYPE = gl.GL_LINEAR_MIPMAP_LINEAR # Linear filtering samples the texture in a bilinear way in the distance, 
                             # however its effect is negligible and should not be used.
                             # Mipmaps generates lower detailed textures 
                             # that will be sampled in high distances, thus reducing aliasing.
@@ -67,4 +63,4 @@ COLORED_LIGHTING = True # Uses an alternative shader program to achieve a more c
                         # Disable for authentic Alpha - Beta look
 
 # Multisample Anti-aliasing (might not work)
-ANTIALIASING = 0
+ANTIALIASING = 8

@@ -3,6 +3,7 @@ import entity
 import glm
 import options
 import chunk
+import subchunk
 from enum import IntEnum
 import collider
 
@@ -43,6 +44,18 @@ class Player(entity.Entity):
 		self.interpolated_position = self.position
 		self.rounded_position = self.position
 		self.view_ray = glm.vec3(1.0)
+
+		self.moved = False
+
+	def add_rotation(self, x, y):
+		if not (x and y):
+			return
+		
+		self.rotation[0] += x
+		self.rotation[1] += y
+
+		self.rotation[1] = max(-math.tau / 4, min(math.tau / 4, self.rotation[1]))
+		self.moved = True
 
 	def update(self, delta_time):
 		# process input
@@ -129,14 +142,7 @@ class Player(entity.Entity):
 				result = FrustumCheckResult.INTERSECTS
 		return result
 
-	def check_chunk_in_frustum(self, chunk_pos):
-		chunk_collider = collider.Collider(
-			chunk_pos * glm.ivec3(chunk.CHUNK_WIDTH, 0, chunk.CHUNK_LENGTH), 
-			chunk_pos * glm.ivec3(chunk.CHUNK_WIDTH, 0, chunk.CHUNK_LENGTH) + glm.ivec3(chunk.CHUNK_WIDTH, chunk.CHUNK_HEIGHT, chunk.CHUNK_LENGTH)
-		)
-		return self.check_in_frustum(chunk_collider)
-
-	def update_matrices(self):
+	def update_matrices(self):		
 		# create projection matrix
 
 		self.world.p_matrix = glm.perspective(
@@ -155,3 +161,4 @@ class Player(entity.Entity):
 
 		self.world.mvp_matrix = self.world.p_matrix * self.world.mv_matrix
 		self.update_frustum()
+		
